@@ -1,0 +1,11 @@
+Lever,Current Value,Target Value,Required Delta,Est $/mo GP Impact,Est GM pp Impact,Owner,Control Mechanism
+Markdown depth cap (BAU),Uncapped (~30% BFCM),≤15% BAU / ≤25% promo,Cap depth,60000,1.8,Ecom,Shopify Script rule + weekly report
+Discount code cap,Uncapped (stacking),≤10% per order,Cap at 10%,25000,0.8,Ecom / Marketing,"Shopify rule: single code, max 10%"
+Price floor rule (don't sell below old base),No floor,Floor = pre-lift base unless clearance approved,Implement floor,20000,0.6,Finance / Ecom,Approval gate: CFO sign-off for below-floor
+US unit economics (shipping/fulfilment),"~$49k/mo drag, ~2.3pp dilution",Breakeven or ≤$15k drag,Reduce by ~$34k/mo,34000,1.5,Ops / Finance,Monthly P&L review; shipping % cap at 12% rev
+Landed cost / freight governance,"Spot pricing, volatile","Contracted rates, quarterly review",Lock rates,15000,0.5,Ops,Quarterly freight RFQ; variance report
+--- Discount Cap by Category ---,,,,,,,
+  Max discount to preserve lift: Bedding Sets,Lift headroom 6%,Total md+disc ≤6%,Implement cap,See above,See above,Ecom / Finance,Lift is ~6%; any deeper discount erases it
+  Max discount to preserve lift: Quilt Covers,Lift headroom 18%,Total md+disc ≤18%,Implement cap,See above,See above,Ecom / Finance,Lift is ~18%; 18% markdown returns to old base
+  Max discount to preserve lift: Quilt Inserts (LWI),Lift headroom 25%,Total md+disc ≤25%,Implement cap,See above,See above,Ecom / Finance,+$50 on ~$200 = 25% headroom
+  Max discount to preserve lift: Quilt Inserts (MDI),Lift headroom 35%,Total md+disc ≤35%,Implement cap,See above,See above,Ecom / Finance,+$100 on ~$285 = 35% headroom
