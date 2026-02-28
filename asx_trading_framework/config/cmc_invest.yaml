@@ -1,0 +1,86 @@
+# ──────────────────────────────────────────────────────
+# CMC Invest Profile
+# ──────────────────────────────────────────────────────
+#
+# Designed for CMC Invest users (no API — signal alerts only).
+# The framework generates alerts; you execute manually in the app.
+#
+# CMC fee structure (as of 2025):
+#   - First daily trade per stock up to $1,000: $0 brokerage
+#   - Additional trades: $11 or 0.11%, whichever is greater
+#   - CHESS-sponsored (you own the shares on your HIN)
+
+broker:
+  adapter: cmc_alert           # Alert-only mode — no automated orders
+  api_key: ""
+  api_secret: ""
+  api_url: ""
+  account_id: ""
+
+risk:
+  max_loss_per_trade: 300      # DEFAULT: $300 AUD — conservative for manual execution
+  max_daily_loss: 1000         # DEFAULT: $1,000 AUD
+  max_weekly_loss: 3000        # DEFAULT: $3,000 AUD
+  max_positions: 3             # DEFAULT: fewer positions since execution is manual
+  max_trades_per_day: 8        # DEFAULT: reduced — each trade requires manual effort
+  max_participation_rate: 0.03 # DEFAULT: 3% — more conservative for retail
+  max_spread_bps: 25           # DEFAULT: 25 bps
+  position_size_pct_of_equity: 0.015  # DEFAULT: 1.5% risk per trade
+  cooldown_after_big_win_pct: 0.5
+  cooldown_big_win_threshold: 3.0
+  cooldown_duration_minutes: 30
+
+execution:
+  default_order_type: LIMIT
+  default_time_in_force: DAY
+  max_retries: 1               # No auto-retry in manual mode
+  slippage_limit_bps: 15       # DEFAULT: 15 bps allowance for manual entry
+  end_of_day_flat: true
+  eod_flatten_time: "15:30"    # DEFAULT: 30 mins before close (manual needs more time)
+
+data:
+  historical_provider: csv
+  live_provider: paper
+  bar_interval_seconds: 60
+  data_directory: "./data"
+
+universe:
+  min_avg_daily_volume: 500000
+  min_avg_daily_turnover: 500000
+  min_price: 0.50              # DEFAULT: 50 cents — avoid penny stocks on manual
+  max_price: 150.00
+
+backtest:
+  # CMC fee model:
+  # First trade free (up to $1K), subsequent = max($11, 0.11%)
+  # Use the higher rate for conservative estimation
+  commission_per_trade: 11.00  # $11 flat
+  commission_pct: 0.0011       # 0.11%
+  slippage_model: fixed_bps
+  slippage_bps: 8              # DEFAULT: slightly higher for manual execution delay
+  walk_forward_train_days: 252
+  walk_forward_test_days: 63
+  monte_carlo_iterations: 1000
+  out_of_sample_pct: 0.30
+  min_trades_for_significance: 30
+
+operations:
+  journal_directory: "./journal"
+  alerts_webhook_url: ""       # Set to your Slack/Discord webhook URL
+  daily_prep_time: "09:00"
+  eod_review_time: "16:30"
+  log_level: INFO
+  log_directory: "./logs"
+  metrics_enabled: true
+
+rollout:
+  paper_trading_min_weeks: 6   # DEFAULT: longer paper period for manual execution
+  paper_min_trades: 100
+  paper_max_drawdown_pct: 5.0
+  paper_min_expectancy: 0.10
+  live_micro_size_multiplier: 0.1
+
+news:
+  no_trade_minutes_before: 15
+  no_trade_minutes_after: 5
+  manual_halt: false

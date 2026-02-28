@@ -28,6 +28,7 @@ from .execution.engine import (
     ExecutionEngine,
     PaperBrokerAdapter,
 )
+from .execution.cmc_alert import CMCAlertAdapter
 from .operations.daily_ops import DailyOps
 from .risk.engine import RiskEngine
 from .signals.engine import SignalEngine
@@ -98,7 +99,20 @@ class TradingFramework:
     def _create_broker(self) -> BrokerAdapter:
         if self.config.broker.adapter == "paper":
             return PaperBrokerAdapter()
-        # Extensibility point: add real broker adapters here
+        if self.config.broker.adapter == "cmc_alert":
+            return CMCAlertAdapter(self.config, self.event_bus)
+        if self.config.broker.adapter == "ibkr":
+            from .execution.ibkr_adapter import IBKRBrokerAdapter
+            adapter = IBKRBrokerAdapter(
+                event_bus=self.event_bus,
+                host=self.config.broker.api_url or "127.0.0.1",
+                port=int(self.config.broker.api_key) if self.config.broker.api_key else 7497,
+                client_id=1,
+                account_id=self.config.broker.account_id,
+            )
+            if not adapter.connect():
+                raise ConnectionError("Failed to connect to IB TWS/Gateway")
+            return adapter
         raise ValueError(f"Unknown broker adapter: {self.config.broker.adapter}")
 
     def _register_strategies(self) -> None:
