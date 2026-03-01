@@ -12,12 +12,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ib = [
+    "ib_async>=1.0.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "mypy>=1.0",
     "ruff>=0.1.0",
 ]
+
+[project.scripts]
+ib = "asx_trading_framework.broker.ib.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

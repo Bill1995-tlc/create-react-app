@@ -103,15 +103,19 @@ class TradingFramework:
             return CMCAlertAdapter(self.config, self.event_bus)
         if self.config.broker.adapter == "ibkr":
             from .execution.ibkr_adapter import IBKRBrokerAdapter
+            import os
             adapter = IBKRBrokerAdapter(
                 event_bus=self.event_bus,
-                host=self.config.broker.api_url or "127.0.0.1",
-                port=int(self.config.broker.api_key) if self.config.broker.api_key else 7497,
-                client_id=1,
-                account_id=self.config.broker.account_id,
+                host=os.getenv("IB_HOST", self.config.broker.api_url or "127.0.0.1"),
+                port=int(os.getenv("IB_PORT", "7497")),
+                client_id=int(os.getenv("IB_CLIENT_ID", "1")),
+                account_id=os.getenv("IB_ACCOUNT", self.config.broker.account_id),
             )
             if not adapter.connect():
-                raise ConnectionError("Failed to connect to IB TWS/Gateway")
+                raise ConnectionError(
+                    "Failed to connect to IB TWS/Gateway. "
+                    "See broker/ib/IB_SETUP.md for setup instructions."
+                )
             return adapter
         raise ValueError(f"Unknown broker adapter: {self.config.broker.adapter}")
 
