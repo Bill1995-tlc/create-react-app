@@ -130,6 +130,18 @@ class NewsConfig:
 
 
 @dataclass
+class SignalConfig:
+    """Signal engine and regime detection configuration."""
+    regime_lookback_bars: int = 20                              # DEFAULT: bars for regime detection
+    regime_trend_threshold_pct: Decimal = Decimal("1.0")        # DEFAULT: 1% for trend classification
+    regime_high_vol_threshold_pct: Decimal = Decimal("5.0")     # DEFAULT: 5% range = high volatility
+    regime_low_vol_threshold_pct: Decimal = Decimal("2.0")      # DEFAULT: 2% range = low volatility
+    market_index_symbols: list[str] = field(
+        default_factory=lambda: ["XJO", "^AXJO", "ASX200"]
+    )
+
+
+@dataclass
 class FrameworkConfig:
     """Top-level configuration aggregating all sub-configs."""
     broker: BrokerConfig = field(default_factory=BrokerConfig)
@@ -141,6 +153,7 @@ class FrameworkConfig:
     operations: OperationsConfig = field(default_factory=OperationsConfig)
     rollout: RolloutConfig = field(default_factory=RolloutConfig)
     news: NewsConfig = field(default_factory=NewsConfig)
+    signal: SignalConfig = field(default_factory=SignalConfig)
 
 
 def load_config(config_path: str | Path) -> FrameworkConfig:
@@ -170,6 +183,7 @@ def load_config(config_path: str | Path) -> FrameworkConfig:
         "operations": (config.operations, OperationsConfig),
         "rollout": (config.rollout, RolloutConfig),
         "news": (config.news, NewsConfig),
+        "signal": (config.signal, SignalConfig),
     }
 
     for section_name, (section_obj, _section_cls) in section_map.items():

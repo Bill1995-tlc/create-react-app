@@ -151,15 +151,22 @@ class IBAdapter:
         await adapter.disconnect()
     """
 
+    # Reconnect backoff schedule (seconds)
+    RECONNECT_DELAYS = [2, 4, 8, 16]
+
     def __init__(self, config: IBConfig | None = None) -> None:
         require_ib_lib()
         self.config = config or IBConfig.from_env()
         self._ib: IB = IB()
         self._connected: bool = False
         self._contract_cache: dict[str, Contract] = {}
+        self._reconnect_count: int = 0
 
         # Register error handler for logging
         self._ib.errorEvent += self._on_error
+
+        # Register disconnect handler for auto-reconnect
+        self._ib.disconnectedEvent += self._on_disconnect
 
         logger.info("IBAdapter initialised. Library: %s. %s", IB_LIB, self.config.describe())
 
@@ -234,9 +241,45 @@ class IBAdapter:
     async def disconnect(self) -> None:
         """Disconnect from TWS/Gateway."""
         if self._connected:
+            # Remove disconnect handler to avoid auto-reconnect on intentional disconnect
+            self._ib.disconnectedEvent -= self._on_disconnect
             self._ib.disconnect()
             self._connected = False
             logger.info("Disconnected from IB.")
+
+    def _on_disconnect(self) -> None:
+        """Handle unexpected disconnection — attempt auto-reconnect with backoff."""
+        if not self._connected:
+            return  # Intentional disconnect, do nothing
+
+        self._connected = False
+        logger.warning("IB connection lost. Attempting auto-reconnect...")
+
+        for attempt, delay in enumerate(self.RECONNECT_DELAYS, 1):
+            logger.info("Reconnect attempt %d/%d in %ds...", attempt, len(self.RECONNECT_DELAYS), delay)
+            import time as _time
+            _time.sleep(delay)
+            try:
+                self._ib.connect(
+                    host=self.config.host,
+                    port=self.config.port,
+                    clientId=self.config.client_id,
+                    timeout=self.config.timeout,
+                    readonly=self.config.readonly,
+                    account=self.config.account or "",
+                )
+                if self._ib.isConnected():
+                    self._connected = True
+                    self._reconnect_count += 1
+                    logger.info("Reconnected to IB (attempt %d, total reconnects: %d)", attempt, self._reconnect_count)
+                    return
+            except Exception as exc:
+                logger.warning("Reconnect attempt %d failed: %s", attempt, exc)
+
+        logger.error(
+            "Failed to reconnect after %d attempts. Manual intervention required.",
+            len(self.RECONNECT_DELAYS),
+        )
 
     @property
     def is_connected(self) -> bool:

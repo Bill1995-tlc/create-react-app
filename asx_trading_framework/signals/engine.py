@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from ..core.config import FrameworkConfig
+from ..core.config import FrameworkConfig, SignalConfig
 from ..core.events import Event, EventBus, EventType
 from ..core.types import Bar, MarketRegime, Quote, Signal, SignalAction
 
@@ -79,10 +79,15 @@ class RegimeDetector:
     Cook-style market context / regime detection.
 
     Uses simple, deterministic rules on broad market data.
+    All thresholds are configurable via SignalConfig.
     """
 
-    def __init__(self, lookback_bars: int = 20) -> None:
-        self.lookback_bars = lookback_bars  # DEFAULT
+    def __init__(self, config: SignalConfig | None = None) -> None:
+        cfg = config or SignalConfig()
+        self.lookback_bars: int = cfg.regime_lookback_bars
+        self.trend_threshold_pct = cfg.regime_trend_threshold_pct
+        self.high_vol_threshold_pct = cfg.regime_high_vol_threshold_pct
+        self.low_vol_threshold_pct = cfg.regime_low_vol_threshold_pct
         self._market_bars: list[Bar] = []
 
     def update(self, bar: Bar) -> None:
@@ -108,11 +113,9 @@ class RegimeDetector:
         high_range = max(b.high for b in recent) - min(b.low for b in recent)
         volatility_pct = (high_range / mean_close) * 100 if mean_close else 0
 
-        # DEFAULT thresholds (configurable)
-        trend_threshold = mean_close * 1 / 100   # 1% difference
-        vol_high_threshold = 5  # 5% range over lookback
+        trend_threshold = mean_close * self.trend_threshold_pct / 100
 
-        if volatility_pct > vol_high_threshold:
+        if volatility_pct > self.high_vol_threshold_pct:
             return MarketRegime.HIGH_VOLATILITY
 
         if second_half_avg - first_half_avg > trend_threshold:
@@ -120,7 +123,7 @@ class RegimeDetector:
         elif first_half_avg - second_half_avg > trend_threshold:
             return MarketRegime.TRENDING_DOWN
 
-        if volatility_pct < 2:  # DEFAULT
+        if volatility_pct < self.low_vol_threshold_pct:
             return MarketRegime.LOW_VOLATILITY
 
         return MarketRegime.RANGE_BOUND
@@ -137,7 +140,8 @@ class SignalEngine:
         self.config = config
         self.event_bus = event_bus
         self.strategies: dict[str, Strategy] = {}
-        self.regime_detector = RegimeDetector()
+        self.regime_detector = RegimeDetector(config.signal)
+        self._market_index_symbols: set[str] = set(config.signal.market_index_symbols)
         self._current_regime = MarketRegime.UNKNOWN
 
         # Subscribe to data events
@@ -158,7 +162,7 @@ class SignalEngine:
         bar: Bar = event.data["bar"]
 
         # Update regime detector with market index bars
-        if bar.symbol in ("XJO", "^AXJO", "ASX200"):
+        if bar.symbol in self._market_index_symbols:
             self.regime_detector.update(bar)
             self._current_regime = self.regime_detector.detect()
 

@@ -1,0 +1,91 @@
+# ──────────────────────────────────────────────────────
+# Interactive Brokers Profile
+# ──────────────────────────────────────────────────────
+#
+# For automated ASX trading via IB TWS/Gateway.
+# Connection settings come from .env (IB_HOST, IB_PORT, etc.)
+#
+# IB fee structure (ASX equities):
+#   - AUD 6.00 flat per order, or
+#   - 0.08% of trade value (whichever is greater)
+#   - Minimum $6 per order
+
+broker:
+  adapter: ibkr
+  api_key: ""
+  api_secret: ""
+  api_url: ""                  # Overridden by IB_HOST env var
+  account_id: ""               # Overridden by IB_ACCOUNT env var
+  timeout_seconds: 10
+
+risk:
+  max_loss_per_trade: 500      # DEFAULT: $500 AUD
+  max_daily_loss: 2000         # DEFAULT: $2,000 AUD
+  max_weekly_loss: 5000        # DEFAULT: $5,000 AUD
+  max_positions: 5             # DEFAULT
+  max_trades_per_day: 20       # DEFAULT
+  max_participation_rate: 0.05 # DEFAULT: 5% of recent volume
+  max_spread_bps: 30           # DEFAULT: 30 bps
+  position_size_pct_of_equity: 0.02  # DEFAULT: 2% risk per trade
+  cooldown_after_big_win_pct: 0.5
+  cooldown_big_win_threshold: 3.0
+  cooldown_duration_minutes: 30
+
+execution:
+  default_order_type: LIMIT
+  default_time_in_force: DAY
+  max_retries: 3
+  slippage_limit_bps: 10
+  end_of_day_flat: true
+  eod_flatten_time: "15:45"    # DEFAULT: 15 mins before ASX close
+
+data:
+  historical_provider: csv
+  live_provider: paper         # Switch to 'ibkr' when IB data adapter is ready
+  bar_interval_seconds: 60
+  data_directory: "./data"
+
+universe:
+  min_avg_daily_volume: 500000
+  min_avg_daily_turnover: 500000
+  min_price: 0.10
+  max_price: 200.00
+
+backtest:
+  # IB fee model: max($6, 0.08%)
+  commission_per_trade: 6.00
+  commission_pct: 0.0008
+  slippage_model: fixed_bps
+  slippage_bps: 5
+  walk_forward_train_days: 252
+  walk_forward_test_days: 63
+  monte_carlo_iterations: 1000
+  out_of_sample_pct: 0.30
+  min_trades_for_significance: 30
+
+operations:
+  journal_directory: "./journal"
+  alerts_webhook_url: ""
+  daily_prep_time: "09:00"
+  eod_review_time: "16:30"
+  log_level: INFO
+  log_directory: "./logs"
+  metrics_enabled: true
+
+signal:
+  regime_lookback_bars: 20
+  regime_trend_threshold_pct: 1.0
+  regime_high_vol_threshold_pct: 5.0
+  regime_low_vol_threshold_pct: 2.0
+
+rollout:
+  paper_trading_min_weeks: 4
+  paper_min_trades: 100
+  paper_max_drawdown_pct: 5.0
+  paper_min_expectancy: 0.10
+  live_micro_size_multiplier: 0.1
+
+news:
+  no_trade_minutes_before: 15
+  no_trade_minutes_after: 5
+  manual_halt: false

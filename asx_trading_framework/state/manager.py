@@ -17,7 +17,7 @@ from typing import Any
 from ..core.events import Event, EventBus, EventType
 from ..core.types import (
     Fill,
-    Order,
+    Order,  # Used for slippage tracking from fill events
     Position,
     Side,
     TradeRecord,
@@ -48,6 +48,11 @@ class StateManager:
         self._daily_pnl: Decimal = Decimal("0")
         self._total_commission: Decimal = Decimal("0")
 
+        # Track entry fill prices per symbol for slippage calculation
+        self._entry_fill_prices: dict[str, Decimal] = {}
+        # Track intended order prices per symbol (from signal) for slippage
+        self._intended_prices: dict[str, Decimal] = {}
+
         # Subscribe to events
         self.event_bus.subscribe(EventType.ORDER_FILLED, self._on_order_filled)
         self.event_bus.subscribe(EventType.ORDER_PARTIALLY_FILLED, self._on_order_filled)
@@ -63,6 +68,11 @@ class StateManager:
         if fill is None:
             return
 
+        # Capture intended price from order for slippage calculation
+        order: Order | None = event.data.get("order")
+        if order and order.price is not None:
+            self._intended_prices[fill.symbol] = order.price
+
         self._fills.append(fill)
         self._total_commission += fill.commission
         self._update_position(fill)
@@ -74,7 +84,7 @@ class StateManager:
         position = self._positions.get(symbol)
 
         if position is None:
-            # New position
+            # New position — record entry fill price for slippage tracking
             quantity = fill.quantity if fill.side == Side.BUY else -fill.quantity
             self._positions[symbol] = Position(
                 symbol=symbol,
@@ -82,6 +92,7 @@ class StateManager:
                 average_entry_price=fill.price,
                 strategy_id="",
             )
+            self._entry_fill_prices[symbol] = fill.price
             self.event_bus.publish(Event(
                 event_type=EventType.POSITION_OPENED,
                 data={"position": self._positions[symbol]},
@@ -105,6 +116,19 @@ class StateManager:
 
             pnl -= fill.commission
 
+            # Compute slippage: difference between intended and actual fill prices
+            # Entry slippage: intended entry vs actual entry fill
+            # Exit slippage: intended exit vs actual exit fill
+            entry_slippage = Decimal("0")
+            intended_entry = self._intended_prices.get(symbol)
+            entry_fill = self._entry_fill_prices.get(symbol)
+            if intended_entry and entry_fill:
+                if old_quantity > 0:  # Long: paid more than intended
+                    entry_slippage = (entry_fill - intended_entry) * abs(old_quantity)
+                else:  # Short: received less than intended
+                    entry_slippage = (intended_entry - entry_fill) * abs(old_quantity)
+            total_slippage = abs(entry_slippage)
+
             trade_record = TradeRecord(
                 trade_id=fill.fill_id,
                 symbol=symbol,
@@ -117,12 +141,15 @@ class StateManager:
                 exit_time=fill.timestamp,
                 pnl=pnl,
                 commission_total=fill.commission,
-                slippage=Decimal("0"),
+                slippage=total_slippage,
             )
             self._completed_trades.append(trade_record)
             self._daily_pnl += pnl
             self._equity += pnl
 
+            # Clean up tracking state for this symbol
+            self._entry_fill_prices.pop(symbol, None)
+            self._intended_prices.pop(symbol, None)
             del self._positions[symbol]
             self.event_bus.publish(Event(
                 event_type=EventType.POSITION_CLOSED,

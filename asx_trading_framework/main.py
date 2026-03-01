@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal as signal_module
 import sys
 from datetime import datetime, time
 from decimal import Decimal
@@ -69,6 +70,7 @@ class TradingFramework:
 
     def __init__(self, config: FrameworkConfig) -> None:
         self.config = config
+        self._shutdown_requested = False
 
         # Core event bus
         self.event_bus = EventBus()
@@ -82,6 +84,10 @@ class TradingFramework:
         self.state_manager = StateManager(self.event_bus)
         self.daily_ops = DailyOps(config, self.event_bus)
 
+        # Recover state from previous session if available
+        if self.state_manager.load_state():
+            logger.info("Recovered state from previous session")
+
         # Register strategies
         self._register_strategies()
 
@@ -90,6 +96,40 @@ class TradingFramework:
 
         # Wire up logging
         self.event_bus.subscribe_all(self._log_event)
+
+        # Register graceful shutdown handler
+        signal_module.signal(signal_module.SIGINT, self._handle_shutdown)
+        signal_module.signal(signal_module.SIGTERM, self._handle_shutdown)
+
+    def _handle_shutdown(self, signum: int, frame: object) -> None:
+        """Graceful shutdown: cancel orders, persist state, disconnect."""
+        if self._shutdown_requested:
+            logger.warning("Force shutdown requested")
+            sys.exit(1)
+
+        self._shutdown_requested = True
+        sig_name = signal_module.Signals(signum).name
+        logger.info("Shutdown signal received (%s). Cleaning up...", sig_name)
+
+        # Cancel all open orders
+        cancelled = self.execution_engine.cancel_all_orders()
+        if cancelled:
+            logger.info("Cancelled %d open orders", cancelled)
+
+        # Persist final state
+        self.state_manager._persist_state()
+
+        # Disconnect broker if it supports it
+        if hasattr(self.broker, "disconnect"):
+            self.broker.disconnect()
+
+        self.event_bus.publish(Event(
+            event_type=EventType.SYSTEM_SHUTDOWN,
+            data={"reason": sig_name},
+            source="framework",
+        ))
+        logger.info("Graceful shutdown complete")
+        sys.exit(0)
 
     def _create_data_provider(self) -> DataProvider:
         if self.config.data.live_provider == "paper":
@@ -334,8 +374,14 @@ def main() -> None:
     elif args.mode == "paper":
         framework.run_paper(args.symbols)
     elif args.mode == "live":
-        logger.error("Live mode requires explicit broker configuration. Not implemented in defaults.")
-        sys.exit(1)
+        if config.broker.adapter == "paper":
+            logger.error(
+                "Live mode requires a real broker adapter (ibkr or cmc_alert). "
+                "Set broker.adapter in your config YAML."
+            )
+            sys.exit(1)
+        logger.info("Starting LIVE mode with broker=%s", config.broker.adapter)
+        framework.run_paper(args.symbols)  # Same loop — broker adapter handles real execution
 
 
 if __name__ == "__main__":
