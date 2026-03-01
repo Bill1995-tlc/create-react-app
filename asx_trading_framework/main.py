@@ -4,7 +4,8 @@ Main orchestrator — wires all modules together and runs the framework.
 Modes:
 - backtest: Run backtests on historical data
 - paper: Run paper trading with simulated execution
-- live: Run live trading (requires broker configuration)
+- dry-run: Connect to real broker, receive data, generate signals, but BLOCK all orders
+- live: Run live trading (requires broker configuration + double confirmation)
 
 Usage:
     python -m asx_trading_framework.main --mode paper --config config/default.yaml
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal as signal_module
 import sys
 from datetime import datetime, time
@@ -30,6 +32,7 @@ from .execution.engine import (
     PaperBrokerAdapter,
 )
 from .execution.cmc_alert import CMCAlertAdapter
+from .execution.dry_run import DryRunBlocked, DryRunBrokerAdapter
 from .operations.daily_ops import DailyOps
 from .risk.engine import RiskEngine
 from .signals.engine import SignalEngine
@@ -40,6 +43,44 @@ from .strategies.orb import OpeningRangeBreakout
 from .strategies.volatility_expansion import VolatilityExpansion
 
 logger = logging.getLogger(__name__)
+
+# Live mode safety banner
+_LIVE_BANNER = """
+╔══════════════════════════════════════════════════════════════════╗
+║                    ⚠  LIVE TRADING MODE  ⚠                     ║
+║                                                                  ║
+║  Real orders will be placed with real money.                     ║
+║                                                                  ║
+║  Requirements:                                                   ║
+║    1. CLI flag:  --confirm-live YES_I_UNDERSTAND                 ║
+║    2. Env var:   LIVE_TRADING_ENABLED=1                          ║
+║                                                                  ║
+║  Both are REQUIRED. Missing either will abort.                   ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+
+
+def _check_live_gates(args: argparse.Namespace) -> None:
+    """Enforce double confirmation for live trading. Exits on failure."""
+    errors: list[str] = []
+
+    if getattr(args, "confirm_live", None) != "YES_I_UNDERSTAND":
+        errors.append(
+            "Missing CLI flag: --confirm-live YES_I_UNDERSTAND"
+        )
+
+    if os.getenv("LIVE_TRADING_ENABLED") != "1":
+        errors.append(
+            "Missing env var: LIVE_TRADING_ENABLED=1"
+        )
+
+    if errors:
+        print(_LIVE_BANNER, file=sys.stderr)
+        for err in errors:
+            logger.error("LIVE GATE FAILED: %s", err)
+        sys.exit(1)
+
+    logger.warning("LIVE TRADING ENABLED — both safety gates passed")
 
 
 class TradingFramework:
@@ -68,8 +109,15 @@ class TradingFramework:
     └──────────────────────────────────────────────────────────────────┘
     """
 
-    def __init__(self, config: FrameworkConfig) -> None:
+    def __init__(
+        self,
+        config: FrameworkConfig,
+        mode: str = "paper",
+        max_notional: Decimal | None = None,
+    ) -> None:
         self.config = config
+        self.mode = mode
+        self.max_notional = max_notional
         self._shutdown_requested = False
 
         # Core event bus
@@ -111,10 +159,14 @@ class TradingFramework:
         sig_name = signal_module.Signals(signum).name
         logger.info("Shutdown signal received (%s). Cleaning up...", sig_name)
 
-        # Cancel all open orders
-        cancelled = self.execution_engine.cancel_all_orders()
-        if cancelled:
-            logger.info("Cancelled %d open orders", cancelled)
+        # Cancel all open orders (safe even in dry-run — DryRunBrokerAdapter
+        # will block the cancel but ExecutionEngine catches exceptions)
+        try:
+            cancelled = self.execution_engine.cancel_all_orders()
+            if cancelled:
+                logger.info("Cancelled %d open orders", cancelled)
+        except DryRunBlocked:
+            logger.info("Dry-run mode: no orders to cancel")
 
         # Persist final state
         self.state_manager._persist_state()
@@ -143,7 +195,6 @@ class TradingFramework:
             return CMCAlertAdapter(self.config, self.event_bus)
         if self.config.broker.adapter == "ibkr":
             from .execution.ibkr_adapter import IBKRBrokerAdapter
-            import os
             adapter = IBKRBrokerAdapter(
                 event_bus=self.event_bus,
                 host=os.getenv("IB_HOST", self.config.broker.api_url or "127.0.0.1"),
@@ -156,6 +207,9 @@ class TradingFramework:
                     "Failed to connect to IB TWS/Gateway. "
                     "See broker/ib/IB_SETUP.md for setup instructions."
                 )
+            # Wrap in dry-run if mode is dry-run
+            if self.mode == "dry-run":
+                return DryRunBrokerAdapter(adapter)
             return adapter
         raise ValueError(f"Unknown broker adapter: {self.config.broker.adapter}")
 
@@ -204,9 +258,22 @@ class TradingFramework:
             if not result.allowed:
                 return
 
+        # Max-notional guard
+        if self.max_notional is not None and signal.price:
+            notional = signal.price * signal.quantity
+            if notional > self.max_notional:
+                logger.warning(
+                    "MAX-NOTIONAL BLOCKED: %s notional $%s > limit $%s",
+                    signal.symbol, notional, self.max_notional,
+                )
+                return
+
         # Create and submit order
         order = self.execution_engine.create_order_from_signal(signal, quote)
-        self.execution_engine.submit_order(order)
+        try:
+            self.execution_engine.submit_order(order)
+        except DryRunBlocked as exc:
+            logger.info("Signal generated but blocked (dry-run): %s", exc)
 
     def _log_event(self, event: Event) -> None:
         """Global event logger."""
@@ -247,7 +314,11 @@ class TradingFramework:
 
     def _flatten_all(self) -> None:
         """Flatten all positions for EOD."""
-        self.execution_engine.cancel_all_orders()
+        try:
+            self.execution_engine.cancel_all_orders()
+        except DryRunBlocked:
+            logger.info("Dry-run mode: skipping EOD flatten")
+            return
         for symbol, position in self.state_manager.positions.items():
             logger.info("EOD flatten: %s qty=%d", symbol, position.quantity)
 
@@ -336,7 +407,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="ASX Trading Framework")
     parser.add_argument(
         "--mode",
-        choices=["backtest", "paper", "live"],
+        choices=["backtest", "paper", "dry-run", "live"],
         default="paper",
         help="Operating mode (default: paper)",
     )
@@ -351,6 +422,26 @@ def main() -> None:
         default=["BHP", "CBA", "CSL", "WBC", "ANZ"],
         help="Symbols to trade",
     )
+    parser.add_argument(
+        "--confirm-live",
+        dest="confirm_live",
+        default=None,
+        help="Live trading confirmation (must be 'YES_I_UNDERSTAND')",
+    )
+    parser.add_argument(
+        "--max-notional",
+        dest="max_notional",
+        type=float,
+        default=None,
+        help="Max notional value per order in AUD (safety limit)",
+    )
+    parser.add_argument(
+        "--max-order-qty",
+        dest="max_order_qty",
+        type=int,
+        default=None,
+        help="Max shares per order (safety limit)",
+    )
     args = parser.parse_args()
 
     # Load config
@@ -363,7 +454,39 @@ def main() -> None:
 
     setup_logging(config.operations.log_level, config.operations.log_directory)
 
-    framework = TradingFramework(config)
+    # ── Live mode safety gates ──
+    if args.mode == "live":
+        _check_live_gates(args)
+        if config.broker.adapter == "paper":
+            logger.error(
+                "Live mode requires a real broker adapter (ibkr or cmc_alert). "
+                "Set broker.adapter in your config YAML."
+            )
+            sys.exit(1)
+
+    # ── Dry-run mode: force ibkr adapter ──
+    if args.mode == "dry-run":
+        if config.broker.adapter == "paper":
+            logger.error(
+                "Dry-run mode requires a real broker adapter (ibkr). "
+                "Set broker.adapter in your config YAML or use --config ibkr.yaml."
+            )
+            sys.exit(1)
+
+    # Parse max-notional
+    max_notional = None
+    if args.max_notional is not None:
+        max_notional = Decimal(str(args.max_notional))
+    elif args.mode == "live":
+        # Default safety limit for live: $10,000 AUD per order
+        max_notional = Decimal("10000")
+        logger.info("Live mode: default max-notional=$%s per order", max_notional)
+
+    framework = TradingFramework(
+        config,
+        mode=args.mode,
+        max_notional=max_notional,
+    )
 
     if args.mode == "backtest":
         framework.run_backtest(
@@ -371,15 +494,9 @@ def main() -> None:
             start=datetime(2023, 1, 1),
             end=datetime(2024, 1, 1),
         )
-    elif args.mode == "paper":
+    elif args.mode in ("paper", "dry-run"):
         framework.run_paper(args.symbols)
     elif args.mode == "live":
-        if config.broker.adapter == "paper":
-            logger.error(
-                "Live mode requires a real broker adapter (ibkr or cmc_alert). "
-                "Set broker.adapter in your config YAML."
-            )
-            sys.exit(1)
         logger.info("Starting LIVE mode with broker=%s", config.broker.adapter)
         framework.run_paper(args.symbols)  # Same loop — broker adapter handles real execution
 
