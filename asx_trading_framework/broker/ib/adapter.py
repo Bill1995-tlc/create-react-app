@@ -75,6 +75,9 @@ except ImportError:
         logger.info("Using ib_insync (fallback). Consider: pip install ib_async")
     except ImportError:
         IB_LIB = ""
+        # Stubs so module-level type aliases below remain importable.
+        # IBAdapter.__init__ guards real use via require_ib_lib().
+        Trade = Any  # type: ignore[misc, assignment]
 
 
 def require_ib_lib() -> None:

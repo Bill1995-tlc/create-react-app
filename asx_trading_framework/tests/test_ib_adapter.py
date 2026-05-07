@@ -140,9 +140,14 @@ class TestIBErrors(unittest.TestCase):
 class TestIBAdapterMocked(unittest.TestCase):
     """Test IBAdapter with mocked ib_async."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ..broker.ib.adapter import IB_LIB
+        if not IB_LIB:
+            raise unittest.SkipTest("ib_async not installed")
+
     def _make_adapter(self) -> tuple:
         """Create an adapter with fully mocked IB internals."""
-        # We need to mock at the ib_async import level
         from ..broker.ib.adapter import IBAdapter
 
         config = IBConfig(host="127.0.0.1", port=7497, client_id=1, mode="paper")
