@@ -1,0 +1,91 @@
+# ═══════════════════════════════════════════════════════════════
+# ASX Trading Framework — Default Configuration
+# ═══════════════════════════════════════════════════════════════
+# All values labeled DEFAULT are safe starting points.
+# Override via this file or environment variables (ASX_TF_<SECTION>_<KEY>).
+#
+# DISCLAIMER: This is engineering software, NOT financial advice.
+# ═══════════════════════════════════════════════════════════════
+
+broker:
+  adapter: paper              # DEFAULT: paper trading (no real orders)
+  api_key: ""
+  api_secret: ""
+  api_url: ""
+  account_id: ""
+  timeout_seconds: 10         # DEFAULT
+
+risk:
+  max_loss_per_trade: 500     # DEFAULT: $500 AUD per trade worst-case
+  max_daily_loss: 2000        # DEFAULT: $2,000 AUD — stops trading for the day
+  max_weekly_loss: 5000       # DEFAULT: $5,000 AUD — stops trading for the week
+  max_positions: 5            # DEFAULT: max simultaneous open positions
+  max_trades_per_day: 20      # DEFAULT
+  max_participation_rate: 0.05 # DEFAULT: max 5% of recent volume
+  max_spread_bps: 30          # DEFAULT: reject if spread > 30 basis points
+  position_size_pct_of_equity: 0.02  # DEFAULT: risk 2% of equity per trade
+  cooldown_after_big_win_pct: 0.5    # DEFAULT: reduce size 50% after outsized win
+  cooldown_big_win_threshold: 3.0    # DEFAULT: trigger if win > 3x average win
+  cooldown_duration_minutes: 30       # DEFAULT
+
+execution:
+  default_order_type: LIMIT   # DEFAULT: prefer limit orders for slippage control
+  default_time_in_force: DAY  # DEFAULT: orders expire at end of session
+  max_retries: 3              # DEFAULT
+  slippage_limit_bps: 10      # DEFAULT: 10 basis points max slippage
+  end_of_day_flat: true       # DEFAULT: flatten all positions before close
+  eod_flatten_time: "15:45"   # DEFAULT: AEST, 15 minutes before market close
+
+data:
+  historical_provider: csv    # DEFAULT: load from CSV files
+  live_provider: paper        # DEFAULT: simulated data for paper trading
+  bar_interval_seconds: 60    # DEFAULT: 1-minute bars
+  data_directory: "./data"
+  symbols_file: ""
+
+universe:
+  min_avg_daily_volume: 500000    # DEFAULT: 500K shares/day minimum
+  min_avg_daily_turnover: 500000  # DEFAULT: $500K AUD turnover
+  min_price: 0.10                 # DEFAULT: 10 cents (avoid micro-caps)
+  max_price: 200.00               # DEFAULT: $200 (avoid illiquids)
+  excluded_symbols: []
+  included_symbols: []            # Empty = use all passing filters
+
+backtest:
+  commission_per_trade: 10.00     # DEFAULT: $10 flat per side
+  commission_pct: 0.001           # DEFAULT: 0.1% (use max of flat/pct)
+  slippage_model: fixed_bps       # DEFAULT
+  slippage_bps: 5                 # DEFAULT: 5 bps assumed slippage
+  walk_forward_train_days: 252    # DEFAULT: 1 year train window
+  walk_forward_test_days: 63      # DEFAULT: 3 month test window
+  monte_carlo_iterations: 1000    # DEFAULT
+  out_of_sample_pct: 0.30         # DEFAULT: 30% holdout
+  min_trades_for_significance: 30 # DEFAULT: need ≥30 trades
+
+operations:
+  journal_directory: "./journal"
+  alerts_webhook_url: ""          # Set to Slack/Discord webhook for alerts
+  daily_prep_time: "09:00"        # DEFAULT: AEST
+  eod_review_time: "16:30"        # DEFAULT: AEST
+  log_level: INFO
+  log_directory: "./logs"
+  metrics_enabled: true
+
+rollout:
+  paper_trading_min_weeks: 4      # DEFAULT: minimum paper trading period
+  paper_min_trades: 100           # DEFAULT: minimum trades before going live
+  paper_max_drawdown_pct: 5.0     # DEFAULT: max 5% drawdown in paper
+  paper_min_expectancy: 0.10      # DEFAULT: $0.10 per $ risked
+  live_micro_size_multiplier: 0.1 # DEFAULT: start at 10% of target size
+  live_scale_milestones:          # DEFAULT: scale-up ladder
+    - 0.1
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+
+news:
+  no_trade_minutes_before: 15     # DEFAULT: no trades 15 min before scheduled events
+  no_trade_minutes_after: 5       # DEFAULT: no trades 5 min after
+  manual_halt: false              # Manual toggle for "halt risk" mode
+  halt_symbols: []                # Symbols to manually halt

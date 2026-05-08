@@ -1,0 +1,38 @@
+# ═══════════════════════════════════════════════════════════════
+# ASX Trading Framework — Aggressive Profile
+# ═══════════════════════════════════════════════════════════════
+# Higher risk tolerance. ONLY use after extensive paper trading
+# and with objective evidence of a persistent edge.
+#
+# WARNING: This profile loses more on bad days. Use with discipline.
+# ═══════════════════════════════════════════════════════════════
+
+broker:
+  adapter: paper
+
+risk:
+  max_loss_per_trade: 1000
+  max_daily_loss: 4000
+  max_weekly_loss: 10000
+  max_positions: 8
+  max_trades_per_day: 40
+  max_participation_rate: 0.08
+  max_spread_bps: 40
+  position_size_pct_of_equity: 0.03
+  cooldown_after_big_win_pct: 0.7
+  cooldown_big_win_threshold: 4.0
+  cooldown_duration_minutes: 15
+
+execution:
+  default_order_type: LIMIT
+  default_time_in_force: DAY
+  max_retries: 3
+  slippage_limit_bps: 15
+  end_of_day_flat: true
+  eod_flatten_time: "15:50"
+
+backtest:
+  commission_per_trade: 10.00
+  commission_pct: 0.001
+  slippage_bps: 8
+  monte_carlo_iterations: 2000

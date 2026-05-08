@@ -1,0 +1,42 @@
+# ═══════════════════════════════════════════════════════════════
+# ASX Trading Framework — Conservative Profile
+# ═══════════════════════════════════════════════════════════════
+# Tightest risk controls. Recommended for initial paper trading
+# and first live micro-size phase.
+# ═══════════════════════════════════════════════════════════════
+
+broker:
+  adapter: paper
+
+risk:
+  max_loss_per_trade: 250
+  max_daily_loss: 1000
+  max_weekly_loss: 2500
+  max_positions: 3
+  max_trades_per_day: 10
+  max_participation_rate: 0.03
+  max_spread_bps: 20
+  position_size_pct_of_equity: 0.01
+  cooldown_after_big_win_pct: 0.4
+  cooldown_big_win_threshold: 2.5
+  cooldown_duration_minutes: 45
+
+execution:
+  default_order_type: LIMIT
+  default_time_in_force: DAY
+  max_retries: 2
+  slippage_limit_bps: 5
+  end_of_day_flat: true
+  eod_flatten_time: "15:30"
+
+universe:
+  min_avg_daily_volume: 1000000
+  min_avg_daily_turnover: 1000000
+  min_price: 1.00
+  max_price: 100.00
+
+backtest:
+  commission_per_trade: 15.00
+  commission_pct: 0.0015
+  slippage_bps: 10
+  monte_carlo_iterations: 2000
